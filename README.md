@@ -61,7 +61,7 @@ Once your data is in BigQuery, you can run the application.
     -   Set your **Gemini API Key** in a `.env` file in the `backend/` directory.
 
 2.  **Install Dependencies:**
-    -   **Backend:** `cd backend && pip install -r requirements.txt`
+    -   **Backend:** `cd backend && pip install -e .`
     -   **Frontend:** `cd frontend && npm install`
 
 3.  **Run Development Servers:**

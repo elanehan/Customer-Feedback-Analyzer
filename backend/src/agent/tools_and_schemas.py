@@ -64,7 +64,6 @@ def get_reviews_from_bigquery(product_id: str) -> List[dict]:
         SELECT review_text, rating, review_timestamp
         FROM `{project_id}.{dataset_id}.{table_name}`
         WHERE product_id = '{product_id}'
-        LIMIT 200 
     """
     # NOTE: We add a LIMIT for testing to keep costs low and development fast.
     

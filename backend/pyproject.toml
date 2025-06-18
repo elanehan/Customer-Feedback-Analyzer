@@ -18,6 +18,11 @@ dependencies = [
     "langgraph-api",
     "fastapi",
     "google-genai",
+    "pandas",
+    "google-cloud-storage",
+    "google-cloud-bigquery",
+    "redis",
+    "rq"
 ]
 
 
