@@ -447,7 +447,10 @@ def generate_summary_node(state: AgentState):
     analysis_results_str = json.dumps(state["analysis_results"], indent=2)
     
     summary_response = llm.invoke(summary_prompt_template.format(analysis_results=analysis_results_str))
-    return {"summary": summary_response.content}
+    return {
+        "summary": summary_response.content,
+        "analysis_results": state["analysis_results"] 
+    }
 
 
 # --- 5. Build the Graph ---

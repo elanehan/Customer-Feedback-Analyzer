@@ -1,0 +1,41 @@
+{
+  "job_id": "ed78ba79-87b5-4cab-871d-d1f46174b115",
+  "status": "complete",
+  "result": {
+    "summary": "Recent customer reviews are mixed, with a notable trend of negative feedback primarily focused on the taste and smell of certain teas, particularly valerian root and nettle tea. However, there are also positive reviews highlighting the effectiveness of teas like sage for hot flashes and red raspberry leaf for pregnancy and labor. Taste is a frequently mentioned topic, appearing in both positive and negative contexts, while shipping issues and product quality are recurring negative concerns.",
+    "details": {
+      "analysis_results": [
+        {
+          "review": "This valerian root tea has an incredibly strong, unpleasant smell, like old socks. I couldn't even bring myself to taste it.",
+          "rating": 1,
+          "sentiment": "Negative",
+          "topics": [
+            "Taste",
+            "Smell"
+          ],
+          "review_timestamp": "2025-06-24T03:51:30.000Z"
+        },
+        {
+          "review": "The sage tea worked wonders for my hot flashes! The taste is earthy but I got used to it. Highly effective.",
+          "rating": 5,
+          "sentiment": "Positive",
+          "topics": [
+            "Effectiveness",
+            "Taste"
+          ],
+          "review_timestamp": "2025-06-23T21:15:00.000Z"
+        },
+        {
+          "review": "My package arrived damaged and the tea box was crushed. Very disappointed with the shipping.",
+          "rating": 2,
+          "sentiment": "Negative",
+          "topics": [
+            "Shipping",
+            "Product Quality"
+          ],
+          "review_timestamp": "2025-06-22T14:05:00.000Z"
+        }
+      ]
+    }
+  }
+}
