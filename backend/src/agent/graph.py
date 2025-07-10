@@ -407,7 +407,7 @@ def batch_analysis_node(state: AgentState):
             timestamp_str = review.get("review_timestamp").isoformat() if review.get("review_timestamp") else None
             
             combined_results.append({
-                "review": review.get("review_text"),
+                # "review": review.get("review_text"),
                 "rating": review.get("rating"),
                 "sentiment": analysis_data.get("sentiment"),
                 "topics": analysis_data.get("topics", []),

@@ -9,7 +9,8 @@ print("Worker: Loading environment and configuration...")
 load_dotenv(dotenv_path='../../.env') 
 
 from .configuration import AgentConfig
-from .graph import agent_executor
+from .graph import agent_executor, batch_analysis_node, generate_summary_node
+from .tools_and_schemas import get_reviews_from_bigquery
 
 # Create an INSTANCE of the config and validate it. This is the fix.
 try:
@@ -44,23 +45,37 @@ def run_full_analysis(job_id: str, product_id: str):
     final_results = {}
 
     try:
-        initial_state = {"product_id": product_id}
-        
-        print("--- WORKER: Invoking agent executor... ---")
-        final_state = agent_executor.invoke(initial_state, {"recursion_limit": 10})
-        print("--- WORKER: Agent execution complete. ---")
+        # Fetch all reviews for the product from BigQuery
+        all_reviews = get_reviews_from_bigquery.invoke(product_id)
+        total_reviews = len(all_reviews)
+        if total_reviews == 0:
+            raise ValueError(f"No reviews found for product ID {product_id}.")
+        print(f"WORKER: Found {total_reviews} reviews for product {product_id}.")
 
-        # --- THIS IS THE CORRECTED LOGIC ---
-        # We now check for the 'summary' key directly in the final_state object.
-        if final_state and final_state.get("summary"):
-            
-            # The 'final_state' IS the dictionary of results we want.
-            final_results = final_state 
-            status = "complete"
-            print(f"WORKER: ✅ Job {job_id} finished successfully.")
-            
-        else:
-            raise ValueError(f"Agent finished but did not produce a summary. Final state keys: {list(final_state.keys())}")
+        # MAP: process reviews in chunks
+        chunk_size = 50
+        all_analysis_results = []
+
+        for i in range(0, total_reviews, chunk_size):
+            chunk_of_reviews = all_reviews[i:i + chunk_size]
+            print(f"WORKER: Processing chunk {i // chunk_size + 1} of {-(total_reviews // -chunk_size)} ...")
+
+            # Create a temporary state for this chunk
+            chunk_state = {"reviews": chunk_of_reviews}
+            # Run just the batch analysis node on this chunk
+            chunk_results = batch_analysis_node(chunk_state)
+            all_analysis_results.extend(chunk_results.get("analysis_results", []))
+
+        # Reduce: generate a summary from all analysis results
+        print(f"WORKER: Generating summary for {len(all_analysis_results)} analysis results...")
+        summary_state = {"analysis_results": all_analysis_results}
+        summary_output = generate_summary_node(summary_state)
+        final_results = {
+            "summary": summary_output.get("summary"),
+            "analysis_results": all_analysis_results
+        }
+        status = "completed"
+        print(f"WORKER: ✅ Job {job_id} finished successfully.")
 
     except Exception as e:
         print(f"WORKER: ❌ Job {job_id} failed: {e}")
