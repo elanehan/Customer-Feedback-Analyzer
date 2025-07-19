@@ -126,37 +126,44 @@ async def start_analysis(request: AnalyzeRequest):
 
 @app.get("/status/{job_id}")
 async def get_job_status(job_id: str):
-    print(f"API Server: Checking status for job {job_id}")
-
-    # Step 1: Check BigQuery for a final, persisted result.
-    try:
-        query = f"SELECT status, summary, full_analysis_json FROM `{RESULTS_TABLE_ID}` WHERE job_id = '{job_id}' LIMIT 1"
-        query_job = BQ_CLIENT.query(query)
-        results = list(query_job)
-
-        if results:
-            job_data = dict(results[0])
-            # --- THE FIX IS HERE ---
-            # We rename our local variable to `status_from_db` to avoid collision
-            # with the imported `status` module from FastAPI.
-            status_from_db = job_data.get("status")
-            print(f"API Server: Found final status '{status_from_db}' for job {job_id} in BigQuery.")
-            
-            if status_from_db in ["complete", "failed"]:
-                details = json.loads(job_data.get("full_analysis_json", "{}")) if job_data.get("full_analysis_json") else {}
-                return {"job_id": job_id, "status": status_from_db, "result": details}
-    except Exception as e:
-        print(f"API Server: Could not query BigQuery for job status: {str(e)}")
-
-    # Step 2: If no final result is in BigQuery, check RQ for the job's live status.
+    """
+    Check the live job status by its ID from RQ
+    and retrieve results from BigQuery if completed.
+    """
+    print(f"API Server: Checking status for job ID: {job_id}")
     try:
         job = Job.fetch(job_id, connection=redis_conn)
-        job_status = job.get_status()
-        print(f"API Server: Found live status '{job_status}' for job {job_id} in RQ.")
-        return {"job_id": job.id, "status": job_status, "result": None}
-    except Exception:
-        print(f"API Server: Job {job_id} not found in live RQ registries.")
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Job ID {job_id} not found: {e}")
+    
+    job_status = job.get_status()
 
-    # Step 3: If not found anywhere, it's a true 404.
-    # Now, 'status' unambiguously refers to the imported FastAPI module.
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Job {job_id} not found.")
+    # If the job is finished, fetch results from BigQuery
+    if job_status == 'finished':
+        print(f"API Server: Job {job_id} finished. Fetching results from BigQuery...")
+        try:
+            query = f"SELECT status, summary, full_analysis_json FROM `{RESULTS_TABLE_ID}` WHERE job_id = '{job_id}' LIMIT 1"
+            query_job = BQ_CLIENT.query(query)
+            results = list(query_job)
+
+            if results:
+                job_data = dict(results[0])
+                # The final status should be 'completed' or 'failed' based on the worker's logic
+                final_status = job_data.get('status', 'unknown')
+
+                details = json.loads(job_data.get('full_analysis_json', '{}')) if job_data.get('full_analysis_json') else {}
+
+                return {"job_id": job_id, "status": final_status, "result": {"summary": job_data.get('summary'), "details": details}}
+            else:
+                # If the RQ job is finished but the worker hasn't finished saving results yet
+                return {"job_id": job_id, "status": "saving_results"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error fetching results from BigQuery: {str(e)}")
+        
+    # If the job failed, we can get the error info from RQ
+    elif job_status == 'failed':
+        return {"job_id": job_id, "status": "failed", "result": {"error": str(job.exc_info)}}
+    
+    # Otherwise, the job is still running or queued
+    else:
+        return {"job_id": job_id, "status": job_status, "result": None}
