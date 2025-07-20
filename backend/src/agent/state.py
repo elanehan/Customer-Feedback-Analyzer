@@ -9,7 +9,7 @@
 # import operator
 # from dataclasses import dataclass, field
 # from typing_extensions import Annotated
-from typing import List, TypedDict
+from typing import List, Dict, TypedDict
 
 
 # class OverallState(TypedDict):
@@ -62,12 +62,14 @@ class AgentState(TypedDict):
     # Populated by the first node
     reviews: List[dict]
 
-    # --- Temporary fields for parallel branches ---
-    # Each parallel node will write to its own unique key to avoid conflicts.
-    sentiment_outputs: List[dict]
-    topic_outputs: List[dict]
-    
-    # --- Final combined results ---
-    # A later "joiner" node will combine the above outputs into this final structure.
+    # Populated by `batch_analysis_node` with raw topics
     analysis_results: List[dict]
+    
+    # Populated by `normalize_topics_node`
+    normalization_map: Dict[str, str]
+    
+    # Populated by `enrich_and_summarize_topics_node`
+    summary_context: dict
+    
+    # The final output from `generate_final_report_node`
     summary: str

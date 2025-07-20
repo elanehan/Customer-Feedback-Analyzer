@@ -96,30 +96,7 @@ from langchain_core.prompts import PromptTemplate
 # {summaries}"""
 
 
-# This prompt instructs the LLM to act as a sentiment classifier
-# and to return a structured JSON object that matches our `SentimentAnalysis` Pydantic model.
-# SENTIMENT_PROMPT = """
-# You are an expert sentiment analyst. Analyze the sentiment of the following customer review.
-# Your response MUST be a single JSON object with one key, "sentiment", and the value must be one of three specific strings: "Positive", "Negative", or "Neutral".
 
-# Review:
-# ---
-# {review_text}
-# ---
-# """
-
-# # This prompt instructs the LLM to act as a topic extractor
-# # and to return a structured JSON object that matches our `TopicExtraction` Pydantic model.
-# TOPIC_PROMPT = """
-# You are an expert product analyst. Read the following customer review and identify the main topics or features being discussed.
-# Extract between 1 to 3 key topics. Topics should be concise, 1-3 word phrases (e.g., "Battery Life", "Screen Quality").
-# Your response MUST be a single JSON object with one key, "topics", which contains a list of the topic strings.
-
-# Review:
-# ---
-# {review_text}
-# ---
-# """
 BATCH_ANALYSIS_PROMPT = """
 You are an expert product analyst. Your task is to perform sentiment analysis and topic extraction for a batch of customer reviews.
 For EACH review in the following JSON list, generate a corresponding JSON object with its sentiment and topics.
@@ -137,16 +114,58 @@ Analyze the following reviews:
 ---
 """
 
-# This prompt instructs the LLM to act as a senior analyst, taking all the structured data
-# from the previous steps to write a final, human-readable summary.
-SUMMARY_PROMPT = """
-You are a senior product analyst preparing a report for an executive team.
-Based on the following structured data summarizing recent customer reviews, write a concise executive summary of 2-4 sentences.
-The data is ordered from most recent to oldest. Pay close attention to any changes in sentiment or topics over time. For example, mention if recent reviews are more positive or negative than older ones.
-Highlight the overall sentiment trends and the most frequently discussed positive and negative topics. The summary should be formatted as clean Markdown.
+NORMALIZE_TOPICS_PROMPT = """
+You are a data cleaning expert. I have a list of noisy topic keywords from customer reviews.
+Your job is to group similar topics together under a single, standardized canonical name.
+RULES:
+- Group synonyms (e.g., 'Flavor', 'Taste').
+- Correct Pluralization and typos (e.g., 'tasts', 'tastes' -> 'Taste').
 
-Analyzed Data: 
+Your response MUST be a single JSON object where each key is one of the original noisy topics and its value is the single canonical topic you have assigned it to.
+
+Example Input List: ["Taste", "tastes", "Flavor", "Shipping", "delivery"]
+Example JSON Output:
+{{
+  "Taste": "Taste & Flavor",
+  "tastes": "Taste & Flavor",
+  "Flavor": "Taste & Flavor",
+  "Shipping": "Shipping & Delivery",
+  "delivery": "Shipping & Delivery"
+}}
+
+Here is the list of topics to normalize:
+{unique_topic_list}
+"""
+
+TOPIC_SUMMARY_PROMPT = """
+Based on the following customer review snippets about the topic '{topic}', write a very concise, 1-3 word summary of the customer sentiment for this topic.
+Examples: "sweet and refreshing", "poor quality", "fast shipping"
+
+Snippets:
 ---
+{snippets}
+---
+"""
+
+EXECUTIVE_SUMMARY_PROMPT = """
+You are a senior product analyst writing an executive summary for a product team.
+Your summary must be insightful, balanced, and 3-4 sentences long.
+
+INSTRUCTIONS:
+1.  Use the high-level **Briefing Document** to understand the most important positive and negative themes.
+2.  Use the **Full Time-Ordered Analysis Data** to find specific details and identify any trends over time (e.g., "sentiment has improved recently"). The order of **Full Time-Ordered Analysis Data** is from oldest to newest.
+3.  Weave all of these insights together into a fluent final report. Explain *why* customers feel the way they do using the topic summaries.
+
+---
+**BRIEFING DOCUMENT:**
+- **Product ID:** {product_id}
+- **Overall Sentiment:** Positive: {positive_percent}%, Negative: {negative_percent}%, Neutral: {neutral_percent}%
+- **Top Positive Topics (with micro-summaries):**
+{positive_topic_summaries}
+- **Top Negative Topics (with micro-summaries):
+{negative_topic_summaries}
+
+**FULL TIME-ORDERED ANALYSIS DATA:**
 {analysis_results}
 ---
 """
@@ -155,4 +174,6 @@ Analyzed Data:
 # sentiment_prompt_template = PromptTemplate.from_template(SENTIMENT_PROMPT)
 # topic_prompt_template = PromptTemplate.from_template(TOPIC_PROMPT)
 batch_analysis_prompt_template = PromptTemplate.from_template(BATCH_ANALYSIS_PROMPT)
-summary_prompt_template = PromptTemplate.from_template(SUMMARY_PROMPT)
+normalize_topics_prompt_template = PromptTemplate.from_template(NORMALIZE_TOPICS_PROMPT)
+topic_summary_prompt_template = PromptTemplate.from_template(TOPIC_SUMMARY_PROMPT)
+executive_summary_prompt_template = PromptTemplate.from_template(EXECUTIVE_SUMMARY_PROMPT)

@@ -10,12 +10,13 @@ from langgraph.graph import START, END
 # from google.genai import Client
 
 import json
+from collections import Counter
 from typing import List
 
 from langchain_core.prompts import PromptTemplate
 from agent.state import AgentState
 from agent.tools_and_schemas import get_reviews_from_bigquery
-from agent.prompts import batch_analysis_prompt_template, summary_prompt_template
+from agent.prompts import batch_analysis_prompt_template, normalize_topics_prompt_template, topic_summary_prompt_template, executive_summary_prompt_template
 from agent.utils import parse_llm_json_output, json_serial
 
 # from agent.state import (
@@ -341,138 +342,198 @@ def retrieve_reviews_node(state: AgentState):
     reviews = get_reviews_from_bigquery.invoke({"product_id": product_id})
     return {"reviews": reviews}
 
-# def analyze_sentiment_node(state: AgentState):
-#     """Analyzes sentiment for each review. Runs in parallel with topic extraction."""
-#     print("---NODE: ANALYZE SENTIMENT---")
+# def batch_analysis_node(state: AgentState):
+#     """
+#     Analyzes all reviews in a single, efficient batch call to the LLM.
+#     This replaces the previous looping approach.
+#     """
+#     print("---NODE: BATCH ANALYSIS---")
 #     reviews = state["reviews"]
-#     sentiments = []
-#     for review in reviews:
-#         review_text = review.get("review_text", "")
-#         # The .invoke method on the structured LLM will return a Pydantic object directly
-#         # It's robust to parsing errors by default.
-#         response = sentiment_llm.invoke(sentiment_prompt_template.format(review_text=review_text))
-#         sentiments.append(response)
-#     return {"sentiment_outputs": sentiments}
+    
+#     # 1. Prepare the input for the LLM
+#     reviews_for_analysis = [
+#         {
+#             "review_text": r.get("review_text", ""),
+#             "review_timestamp": r.get("review_timestamp")
+#         }
+#         for r in reviews
+#     ]
+#     # We now use our safe JSON serializer to handle the datetime objects correctly
+#     review_list_json = json.dumps(reviews_for_analysis, default=json_serial)
+    
+#     # 2. Create the prompt and the chain
+#     # We use the main llm here, as we'll parse the complex JSON response ourselves.
+#     analysis_chain = batch_analysis_prompt_template | llm 
 
-# def extract_topics_node(state: AgentState):
-#     """Extracts topics from each review. Runs in parallel with sentiment analysis."""
-#     print("---NODE: EXTRACT TOPICS---")
-#     reviews = state["reviews"]
-#     topics = []
-#     for review in reviews:
-#         response = topics_llm.invoke(topic_prompt_template.format(review_text=review.get("review_text", "")))
-#         topics.append(response)
-#     return {"topic_outputs": topics}
+#     # 3. Make ONE powerful API call instead of 100+
+#     print(f"Analyzing {len(reviews)} reviews in a single batch call...")
+#     response = analysis_chain.invoke({"review_list_json": review_list_json})
+#     print("--- Batch analysis complete. Parsing and combining results... ---")
+    
+#     # 4. Parse the response and combine it with the original data
+#     try:
+#         # Use our safe parser from utils.py in case the LLM response isn't perfect
+#         parsed_response = parse_llm_json_output(response.content)
+#         llm_analyses = parsed_response.get("analyses", [])
 
-def batch_analysis_node(state: AgentState):
+#         combined_results = []
+#         # Loop through the ORIGINAL reviews and merge with the analysis results
+#         for i, review in enumerate(reviews):
+#             # Fallback in case the LLM didn't return an analysis for every review
+#             analysis_data = llm_analyses[i] if i < len(llm_analyses) else {"sentiment": "Error", "topics": []}
+            
+#             timestamp_str = review.get("review_timestamp").isoformat() if review.get("review_timestamp") else None
+            
+#             combined_results.append({
+#                 # "review": review.get("review_text"),
+#                 "rating": review.get("rating"),
+#                 "sentiment": analysis_data.get("sentiment"),
+#                 "topics": analysis_data.get("topics", []),
+#                 "review_timestamp": timestamp_str
+#             })
+            
+#         return {"analysis_results": combined_results}
+    
+#     except Exception as e:
+#         print(f"Error parsing batch analysis response: {e}")
+#         # If parsing fails, we can add an error state or empty results
+#         return {"analysis_results": []}
+    
+
+
+# def generate_summary_node(state: AgentState):
+#     """The final node. Takes all structured analysis and generates a human-readable summary."""
+#     print("---NODE: GENERATE SUMMARY---")
+#     analysis_results_str = json.dumps(state["analysis_results"], indent=2)
+    
+#     summary_response = llm.invoke(summary_prompt_template.format(analysis_results=analysis_results_str))
+#     return {
+#         "summary": summary_response.content,
+#         "analysis_results": state["analysis_results"] 
+#     }
+
+
+# # --- 5. Build the Graph ---
+# # This section remains the same.
+
+# workflow = StateGraph(AgentState)
+
+# workflow.add_node("retrieve_reviews", retrieve_reviews_node)
+# # workflow.add_node("analyze_sentiment", analyze_sentiment_node)
+# # workflow.add_node("extract_topics", extract_topics_node)
+# # workflow.add_node("aggregate_results", aggregate_results_node)
+# workflow.add_node("batch_analysis", batch_analysis_node)
+# workflow.add_node("generate_summary", generate_summary_node)
+
+# workflow.set_entry_point("retrieve_reviews")
+# # workflow.add_edge("retrieve_reviews", "analyze_sentiment")
+# # workflow.add_edge("retrieve_reviews", "extract_topics")
+# # workflow.add_edge(["analyze_sentiment", "extract_topics"], "aggregate_results")
+# # workflow.add_edge("aggregate_results", "generate_summary")
+# workflow.add_edge("retrieve_reviews", "batch_analysis")
+# workflow.add_edge("batch_analysis", "generate_summary")
+# workflow.add_edge("generate_summary", END)
+
+# agent_executor = workflow.compile()
+# print("Agent graph compiled successfully.")
+
+def analysis_and_enrichment_node(state: AgentState):
     """
-    Analyzes all reviews in a single, efficient batch call to the LLM.
-    This replaces the previous looping approach.
+    The single workhorse node that performs all analysis and enrichment.
     """
-    print("---NODE: BATCH ANALYSIS---")
+    print("---NODE: ANALYSIS & ENRICHMENT---")
     reviews = state["reviews"]
     
-    # 1. Prepare the input for the LLM
-    reviews_for_analysis = [
-        {
-            "review_text": r.get("review_text", ""),
-            "review_timestamp": r.get("review_timestamp")
-        }
-        for r in reviews
-    ]
-    # We now use our safe JSON serializer to handle the datetime objects correctly
-    review_list_json = json.dumps(reviews_for_analysis, default=json_serial)
+    # === Step 1: Per-Review Analysis (Batch Call) ===
+    review_texts = [r.get("review_text", "") for r in reviews]
+    analysis_chain = batch_analysis_prompt_template | llm
+    response = analysis_chain.invoke({"review_list_json": json.dumps(review_texts)})
+    llm_analyses = parse_llm_json_output(response.content).get("analyses", [])
     
-    # 2. Create the prompt and the chain
-    # We use the main llm here, as we'll parse the complex JSON response ourselves.
-    analysis_chain = batch_analysis_prompt_template | llm 
+    analysis_results = []
+    for i, review in enumerate(reviews):
+        analysis_data = llm_analyses[i] if i < len(llm_analyses) else {}
+        analysis_results.append({**review, **analysis_data})
 
-    # 3. Make ONE powerful API call instead of 100+
-    print(f"Analyzing {len(reviews)} reviews in a single batch call...")
-    response = analysis_chain.invoke({"review_list_json": review_list_json})
-    print("--- Batch analysis complete. Parsing and combining results... ---")
+    # === Step 2: Topic Normalization ===
+    all_raw_topics = [topic for item in analysis_results for topic in item.get('topics', [])]
+    unique_topics = sorted(list(set(all_raw_topics)))
+    norm_map = {}
+    if unique_topics:
+        norm_chain = normalize_topics_prompt_template | llm
+        norm_response = norm_chain.invoke({"unique_topic_list": json.dumps(unique_topics)})
+        norm_map = parse_llm_json_output(norm_response.content)
     
-    # 4. Parse the response and combine it with the original data
-    try:
-        # Use our safe parser from utils.py in case the LLM response isn't perfect
-        parsed_response = parse_llm_json_output(response.content)
-        llm_analyses = parsed_response.get("analyses", [])
+    clean_analysis_results = []
+    for item in analysis_results:
+        clean_topics = [norm_map.get(raw_topic, raw_topic) for raw_topic in item.get('topics', [])]
+        clean_analysis_results.append({**item, "topics": clean_topics})
+    
+    # === Step 3: Statistical Enrichment & Topic Summarization ===
+    # (This section combines the final analysis steps)
+    sentiments = [item.get('sentiment') for item in clean_analysis_results]
+    total_valid = len(sentiments)
+    positive_topics = [topic for item in clean_analysis_results if item.get('sentiment') == 'Positive' for topic in item.get('topics', [])]
+    negative_topics = [topic for item in clean_analysis_results if item.get('sentiment') == 'Negative' for topic in item.get('topics', [])]
+    top_5_positive = [item[0] for item in Counter(positive_topics).most_common(5)]
+    top_5_negative = [item[0] for item in Counter(negative_topics).most_common(5)]
 
-        combined_results = []
-        # Loop through the ORIGINAL reviews and merge with the analysis results
-        for i, review in enumerate(reviews):
-            # Fallback in case the LLM didn't return an analysis for every review
-            analysis_data = llm_analyses[i] if i < len(llm_analyses) else {"sentiment": "Error", "topics": []}
+    topic_summaries = {}
+    for topic in list(set(top_5_positive + top_5_negative)):
+        snippets = [item['review_text'] for item in clean_analysis_results if topic in item.get('topics', [])]
+        if snippets:
+            summary_response = llm.invoke(topic_summary_prompt_template.format(topic=topic, snippets="\n".join(snippets[:5])))
+            topic_summaries[topic] = summary_response.content
             
-            timestamp_str = review.get("review_timestamp").isoformat() if review.get("review_timestamp") else None
-            
-            combined_results.append({
-                # "review": review.get("review_text"),
-                "rating": review.get("rating"),
-                "sentiment": analysis_data.get("sentiment"),
-                "topics": analysis_data.get("topics", []),
-                "review_timestamp": timestamp_str
-            })
-            
-        return {"analysis_results": combined_results}
-    
-    except Exception as e:
-        print(f"Error parsing batch analysis response: {e}")
-        # If parsing fails, we can add an error state or empty results
-        return {"analysis_results": []}
-    
-# def aggregate_results_node(state: AgentState):
-#     """A 'joiner' node that combines the parallel analysis outputs into a single structure."""
-#     print("---NODE: AGGREGATE RESULTS---")
-#     reviews = state["reviews"]
-#     sentiment_outputs = state["sentiment_outputs"]
-#     topic_outputs = state["topic_outputs"]
-    
-#     combined_results = []
-#     for i, review in enumerate(reviews):
-#         timestamp_str = review.get("review_timestamp").isoformat() if review.get("review_timestamp") else None
-#         combined_results.append({
-#             "review": review.get("review_text"),
-#             "rating": review.get("rating"),
-#             "sentiment": sentiment_outputs[i].sentiment,
-#             "topics": topic_outputs[i].topics,
-#             "review_timestamp": timestamp_str
-#         })
-        
-#     return {"analysis_results": combined_results}
-
-def generate_summary_node(state: AgentState):
-    """The final node. Takes all structured analysis and generates a human-readable summary."""
-    print("---NODE: GENERATE SUMMARY---")
-    analysis_results_str = json.dumps(state["analysis_results"], indent=2)
-    
-    summary_response = llm.invoke(summary_prompt_template.format(analysis_results=analysis_results_str))
-    return {
-        "summary": summary_response.content,
-        "analysis_results": state["analysis_results"] 
+    summary_context = {
+        "product_id": state["product_id"],
+        "positive_percent": (sentiments.count('Positive') / total_valid * 100) if total_valid > 0 else 0,
+        "negative_percent": (sentiments.count('Negative') / total_valid * 100) if total_valid > 0 else 0,
+        "neutral_percent": (sentiments.count('Neutral') / total_valid * 100) if total_valid > 0 else 0,
+        "positive_topic_summaries": {topic: topic_summaries.get(topic, "") for topic in top_5_positive},
+        "negative_topic_summaries": {topic: topic_summaries.get(topic, "") for topic in top_5_negative}
     }
+    clean_analysis_without_text = []
+    for item in clean_analysis_results:
+        analysis_only = {k: v for k, v in item.items() if k != 'review_text'}
+        clean_analysis_without_text.append(analysis_only)
 
+    # Explicitly clear/overwrite the reviews to remove review_text
+    return {
+        "analysis_results": clean_analysis_without_text,  # Clean analysis data
+        "summary_context": summary_context,
+        "reviews": []  # Explicitly clear the original reviews
+    }
+def generate_final_report_node(state: AgentState):
+    """Generates the final summary using the rich context."""
+    print("---NODE: GENERATE FINAL REPORT---")
+    context = state["summary_context"]
+    pos_summary_text = "\n".join([f"- **{topic}:** {summary}" for topic, summary in context['positive_topic_summaries'].items()])
+    neg_summary_text = "\n".join([f"- **{topic}:** {summary}" for topic, summary in context['negative_topic_summaries'].items()])
+    
+    # We add the full analysis list back in for the agent to find trends
+    final_prompt = executive_summary_prompt_template.format(
+        product_id=context['product_id'],
+        positive_percent=f"{context['positive_percent']:.0f}",
+        negative_percent=f"{context['negative_percent']:.0f}",
+        neutral_percent=f"{context['neutral_percent']:.0f}",
+        positive_topic_summaries=pos_summary_text,
+        negative_topic_summaries=neg_summary_text,
+        analysis_results=json.dumps(state["analysis_results"], default=str)
+    )
+    final_summary = llm.invoke(final_prompt)
+    return {"summary": final_summary.content}
 
-# --- 5. Build the Graph ---
-# This section remains the same.
-
+# --- 3. Build the Graph ---
 workflow = StateGraph(AgentState)
-
 workflow.add_node("retrieve_reviews", retrieve_reviews_node)
-# workflow.add_node("analyze_sentiment", analyze_sentiment_node)
-# workflow.add_node("extract_topics", extract_topics_node)
-# workflow.add_node("aggregate_results", aggregate_results_node)
-workflow.add_node("batch_analysis", batch_analysis_node)
-workflow.add_node("generate_summary", generate_summary_node)
+workflow.add_node("analysis_and_enrichment", analysis_and_enrichment_node)
+workflow.add_node("generate_final_report", generate_final_report_node)
 
 workflow.set_entry_point("retrieve_reviews")
-# workflow.add_edge("retrieve_reviews", "analyze_sentiment")
-# workflow.add_edge("retrieve_reviews", "extract_topics")
-# workflow.add_edge(["analyze_sentiment", "extract_topics"], "aggregate_results")
-# workflow.add_edge("aggregate_results", "generate_summary")
-workflow.add_edge("retrieve_reviews", "batch_analysis")
-workflow.add_edge("batch_analysis", "generate_summary")
-workflow.add_edge("generate_summary", END)
+workflow.add_edge("retrieve_reviews", "analysis_and_enrichment")
+workflow.add_edge("analysis_and_enrichment", "generate_final_report")
+workflow.add_edge("generate_final_report", END)
 
 agent_executor = workflow.compile()
-print("Agent graph compiled successfully.")
+print("✅ Agent graph compiled with FINAL consolidated enrichment logic.")
