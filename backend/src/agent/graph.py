@@ -342,101 +342,6 @@ def retrieve_reviews_node(state: AgentState):
     reviews = get_reviews_from_bigquery.invoke({"product_id": product_id})
     return {"reviews": reviews}
 
-# def batch_analysis_node(state: AgentState):
-#     """
-#     Analyzes all reviews in a single, efficient batch call to the LLM.
-#     This replaces the previous looping approach.
-#     """
-#     print("---NODE: BATCH ANALYSIS---")
-#     reviews = state["reviews"]
-    
-#     # 1. Prepare the input for the LLM
-#     reviews_for_analysis = [
-#         {
-#             "review_text": r.get("review_text", ""),
-#             "review_timestamp": r.get("review_timestamp")
-#         }
-#         for r in reviews
-#     ]
-#     # We now use our safe JSON serializer to handle the datetime objects correctly
-#     review_list_json = json.dumps(reviews_for_analysis, default=json_serial)
-    
-#     # 2. Create the prompt and the chain
-#     # We use the main llm here, as we'll parse the complex JSON response ourselves.
-#     analysis_chain = batch_analysis_prompt_template | llm 
-
-#     # 3. Make ONE powerful API call instead of 100+
-#     print(f"Analyzing {len(reviews)} reviews in a single batch call...")
-#     response = analysis_chain.invoke({"review_list_json": review_list_json})
-#     print("--- Batch analysis complete. Parsing and combining results... ---")
-    
-#     # 4. Parse the response and combine it with the original data
-#     try:
-#         # Use our safe parser from utils.py in case the LLM response isn't perfect
-#         parsed_response = parse_llm_json_output(response.content)
-#         llm_analyses = parsed_response.get("analyses", [])
-
-#         combined_results = []
-#         # Loop through the ORIGINAL reviews and merge with the analysis results
-#         for i, review in enumerate(reviews):
-#             # Fallback in case the LLM didn't return an analysis for every review
-#             analysis_data = llm_analyses[i] if i < len(llm_analyses) else {"sentiment": "Error", "topics": []}
-            
-#             timestamp_str = review.get("review_timestamp").isoformat() if review.get("review_timestamp") else None
-            
-#             combined_results.append({
-#                 # "review": review.get("review_text"),
-#                 "rating": review.get("rating"),
-#                 "sentiment": analysis_data.get("sentiment"),
-#                 "topics": analysis_data.get("topics", []),
-#                 "review_timestamp": timestamp_str
-#             })
-            
-#         return {"analysis_results": combined_results}
-    
-#     except Exception as e:
-#         print(f"Error parsing batch analysis response: {e}")
-#         # If parsing fails, we can add an error state or empty results
-#         return {"analysis_results": []}
-    
-
-
-# def generate_summary_node(state: AgentState):
-#     """The final node. Takes all structured analysis and generates a human-readable summary."""
-#     print("---NODE: GENERATE SUMMARY---")
-#     analysis_results_str = json.dumps(state["analysis_results"], indent=2)
-    
-#     summary_response = llm.invoke(summary_prompt_template.format(analysis_results=analysis_results_str))
-#     return {
-#         "summary": summary_response.content,
-#         "analysis_results": state["analysis_results"] 
-#     }
-
-
-# # --- 5. Build the Graph ---
-# # This section remains the same.
-
-# workflow = StateGraph(AgentState)
-
-# workflow.add_node("retrieve_reviews", retrieve_reviews_node)
-# # workflow.add_node("analyze_sentiment", analyze_sentiment_node)
-# # workflow.add_node("extract_topics", extract_topics_node)
-# # workflow.add_node("aggregate_results", aggregate_results_node)
-# workflow.add_node("batch_analysis", batch_analysis_node)
-# workflow.add_node("generate_summary", generate_summary_node)
-
-# workflow.set_entry_point("retrieve_reviews")
-# # workflow.add_edge("retrieve_reviews", "analyze_sentiment")
-# # workflow.add_edge("retrieve_reviews", "extract_topics")
-# # workflow.add_edge(["analyze_sentiment", "extract_topics"], "aggregate_results")
-# # workflow.add_edge("aggregate_results", "generate_summary")
-# workflow.add_edge("retrieve_reviews", "batch_analysis")
-# workflow.add_edge("batch_analysis", "generate_summary")
-# workflow.add_edge("generate_summary", END)
-
-# agent_executor = workflow.compile()
-# print("Agent graph compiled successfully.")
-
 def analysis_and_enrichment_node(state: AgentState):
     """
     The single workhorse node that performs all analysis and enrichment.
@@ -493,6 +398,7 @@ def analysis_and_enrichment_node(state: AgentState):
         "positive_topic_summaries": {topic: topic_summaries.get(topic, "") for topic in top_5_positive},
         "negative_topic_summaries": {topic: topic_summaries.get(topic, "") for topic in top_5_negative}
     }
+    print(summary_context)
     clean_analysis_without_text = []
     for item in clean_analysis_results:
         analysis_only = {k: v for k, v in item.items() if k != 'review_text'}
@@ -521,6 +427,7 @@ def generate_final_report_node(state: AgentState):
         negative_topic_summaries=neg_summary_text,
         analysis_results=json.dumps(state["analysis_results"], default=str)
     )
+    print(f"{context['positive_percent']:.0f}, {context['negative_percent']:.0f}, {context['neutral_percent']:.0f}")
     final_summary = llm.invoke(final_prompt)
     return {"summary": final_summary.content}
 

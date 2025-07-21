@@ -78,7 +78,7 @@ class AgentConfig(BaseModel):
     
     # --- LLM Configuration ---
     gemini_model_name: str = Field(
-        default="gemini-2.0-flash",
+        default="gemini-2.0-flash-lite",
         description="The specific Gemini model to use for analysis."
     )
     

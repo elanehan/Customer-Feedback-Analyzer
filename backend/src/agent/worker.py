@@ -1,5 +1,6 @@
 import os
 import json
+from collections import Counter
 from datetime import datetime, timezone
 from google.cloud import bigquery
 from dotenv import load_dotenv
@@ -9,8 +10,9 @@ print("Worker: Loading environment and configuration...")
 load_dotenv(dotenv_path='../../.env') 
 
 from .configuration import AgentConfig
-from .graph import agent_executor, batch_analysis_node, generate_summary_node
+from .graph import retrieve_reviews_node, analysis_and_enrichment_node, generate_final_report_node
 from .tools_and_schemas import get_reviews_from_bigquery
+import time
 
 # Create an INSTANCE of the config and validate it. This is the fix.
 try:
@@ -54,28 +56,35 @@ def run_full_analysis(job_id: str, product_id: str):
 
         # MAP: process reviews in chunks
         chunk_size = 50
-        all_analysis_results = []
+        all_enriched_results = []
 
         for i in range(0, total_reviews, chunk_size):
             chunk_of_reviews = all_reviews[i:i + chunk_size]
             print(f"WORKER: Processing chunk {i // chunk_size + 1} of {-(total_reviews // -chunk_size)} ...")
 
             # Create a temporary state for this chunk
-            chunk_state = {"reviews": chunk_of_reviews}
-            # Run just the batch analysis node on this chunk
-            chunk_results = batch_analysis_node(chunk_state)
-            all_analysis_results.extend(chunk_results.get("analysis_results", []))
+            chunk_state = {"reviews": chunk_of_reviews, "product_id": product_id}
+            # Call the enrichment node directly on the chunk
+            enriched_chunk = analysis_and_enrichment_node(chunk_state)
+            all_enriched_results.append(enriched_chunk)
 
-        # Reduce: generate a summary from all analysis results
-        print(f"WORKER: Generating summary for {len(all_analysis_results)} analysis results...")
-        summary_state = {"analysis_results": all_analysis_results}
-        summary_output = generate_summary_node(summary_state)
-        final_results = {
-            "summary": summary_output.get("summary"),
-            "analysis_results": all_analysis_results
+            # Avoid hitting rate limits by sleeping between chunks
+            time.sleep(10)  # Adjust this sleep time as needed based on your rate limits
+            
+        # REDUCE: Aggregate the final context and generate the final summary
+        final_summary_context = all_enriched_results[0]['summary_context']
+        final_analysis_list = [item for chunk in all_enriched_results for item in chunk['analysis_results']]
+
+        final_summary_state = {
+            "summary_context": final_summary_context,
+            "analysis_results": final_analysis_list,
         }
+        print(f"WORKER: Aggregated {len(final_analysis_list)} analysis results for final summary.")
+
+        final_report = generate_final_report_node(final_summary_state)
+        final_results = final_report
         status = "completed"
-        print(f"WORKER: ✅ Job {job_id} finished successfully.")
+        print(f"WORKER: Final summary generated successfully for job {job_id}.")
 
     except Exception as e:
         print(f"WORKER: ❌ Job {job_id} failed: {e}")
