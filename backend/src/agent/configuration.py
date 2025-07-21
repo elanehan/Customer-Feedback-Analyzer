@@ -75,6 +75,10 @@ class AgentConfig(BaseModel):
         default="customer_feedback_analyzer_dataset",
         description="The BigQuery dataset containing the review tables."
     )
+    bigquery_table: str = Field(
+        default="clean_reviews",
+        description="The BigQuery table containing the cleaned reviews."
+    )
     
     # --- LLM Configuration ---
     gemini_model_name: str = Field(

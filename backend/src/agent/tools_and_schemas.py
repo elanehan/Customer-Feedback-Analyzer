@@ -3,6 +3,7 @@ from typing import List, Literal
 from pydantic import BaseModel, Field
 from langchain_core.tools import tool
 from google.cloud import bigquery
+from .configuration import AgentConfig
 
 # class SearchQueryList(BaseModel):
 #     query: List[str] = Field(
@@ -51,8 +52,9 @@ def get_reviews_from_bigquery(product_id: str) -> List[dict]:
     
     # It's best practice to get configuration from environment variables
     project_id = os.getenv("GCP_PROJECT_ID")
-    dataset_id = "customer_feedback_analyzer_dataset" # This can also be an env var
-    table_name = "clean_reviews" # The table created by your Spark/dbt job
+    config = AgentConfig(gcp_project_id=project_id)
+    dataset_id = config.bigquery_dataset  # Use the dataset from the config
+    table_name = config.bigquery_table  # Use the table name from the config
 
     if not project_id:
         raise ValueError("GCP_PROJECT_ID environment variable is not set.")
