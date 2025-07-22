@@ -67,7 +67,6 @@ def get_reviews_from_bigquery(product_id: str) -> List[dict]:
         FROM `{project_id}.{dataset_id}.{table_name}`
         WHERE product_id = '{product_id}'
         ORDER BY review_timestamp ASC
-        LIMIT 100
     """
     # NOTE: We add a LIMIT for testing to keep costs low and development fast.
     

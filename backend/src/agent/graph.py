@@ -12,6 +12,7 @@ from langgraph.graph import START, END
 import json
 from collections import Counter
 from typing import List
+import time
 
 from langchain_core.prompts import PromptTemplate
 from agent.state import AgentState
@@ -327,14 +328,9 @@ except Exception as e:
     raise ValueError(f"Configuration Error: {e}")
 
 # Instantiate clients, now explicitly passing the API key.
-# This is the robust pattern we discussed.
 llm = ChatGoogleGenerativeAI(model=config.gemini_model_name, google_api_key=gemini_api_key, temperature=0, max_retries=2)
-# sentiment_llm = llm.with_structured_output(SentimentAnalysis)
-# topics_llm = llm.with_structured_output(TopicExtraction)
 
 # --- 4. Define the Node Functions ---
-# The logic inside these nodes remains the same. They will use the llm clients defined above.
-
 def retrieve_reviews_node(state: AgentState):
     """Fetches reviews from BigQuery using the product_id from the state."""
     print("---NODE: RETRIEVE REVIEWS---")
@@ -369,47 +365,58 @@ def analysis_and_enrichment_node(state: AgentState):
         norm_response = norm_chain.invoke({"unique_topic_list": json.dumps(unique_topics)})
         norm_map = parse_llm_json_output(norm_response.content)
     
-    clean_analysis_results = []
+    # Apply the normalization map to the topics
     for item in analysis_results:
-        clean_topics = [norm_map.get(raw_topic, raw_topic) for raw_topic in item.get('topics', [])]
-        clean_analysis_results.append({**item, "topics": clean_topics})
+        item['topics'] = [norm_map.get(raw_topic, raw_topic) for raw_topic in item.get('topics', [])]
+
+    return {"analysis_results": analysis_results}
     
-    # === Step 3: Statistical Enrichment & Topic Summarization ===
-    # (This section combines the final analysis steps)
-    sentiments = [item.get('sentiment') for item in clean_analysis_results]
-    total_valid = len(sentiments)
-    positive_topics = [topic for item in clean_analysis_results if item.get('sentiment') == 'Positive' for topic in item.get('topics', [])]
-    negative_topics = [topic for item in clean_analysis_results if item.get('sentiment') == 'Negative' for topic in item.get('topics', [])]
-    top_5_positive = [item[0] for item in Counter(positive_topics).most_common(5)]
-    top_5_negative = [item[0] for item in Counter(negative_topics).most_common(5)]
-
+def topic_summary_node(state: AgentState):
+    """
+    Generates concise summaries for the top 5 positive and negative topics based on recent reviews.
+    """
+    print("---NODE: GENERATE TOPIC SUMMARIES---")
+    final_analysis_list = state["analysis_results"]
+    top_5_positive = state["top_5_positive_topics"]
+    top_5_negative = state["top_5_negative_topics"]
     topic_summaries = {}
-    for topic in list(set(top_5_positive + top_5_negative)):
-        snippets = [item['review_text'] for item in clean_analysis_results if topic in item.get('topics', [])]
-        if snippets:
-            summary_response = llm.invoke(topic_summary_prompt_template.format(topic=topic, snippets="\n".join(snippets[:5])))
-            topic_summaries[topic] = summary_response.content
-            
-    summary_context = {
-        "product_id": state["product_id"],
-        "positive_percent": (sentiments.count('Positive') / total_valid * 100) if total_valid > 0 else 0,
-        "negative_percent": (sentiments.count('Negative') / total_valid * 100) if total_valid > 0 else 0,
-        "neutral_percent": (sentiments.count('Neutral') / total_valid * 100) if total_valid > 0 else 0,
-        "positive_topic_summaries": {topic: topic_summaries.get(topic, "") for topic in top_5_positive},
-        "negative_topic_summaries": {topic: topic_summaries.get(topic, "") for topic in top_5_negative}
-    }
-    print(summary_context)
-    clean_analysis_without_text = []
-    for item in clean_analysis_results:
-        analysis_only = {k: v for k, v in item.items() if k != 'review_text'}
-        clean_analysis_without_text.append(analysis_only)
 
-    # Explicitly clear/overwrite the reviews to remove review_text
-    return {
-        "analysis_results": clean_analysis_without_text,  # Clean analysis data
-        "summary_context": summary_context,
-        "reviews": []  # Explicitly clear the original reviews
-    }
+    # Process positive topics
+    for topic in top_5_positive:
+        positive_reviews_with_topic = [
+            r for r in final_analysis_list
+            if topic in r.get('topics', []) and r.get('sentiment') == "Positive"
+        ]
+        # Take the last 10 reviews for recency
+        snippets = [r['review_text'] for r in positive_reviews_with_topic[-10:]]
+        if snippets:
+            summary_response = llm.invoke(
+                topic_summary_prompt_template.format(
+                    topic=topic,
+                    snippets="\\n".join(snippets))
+            )
+            topic_summaries[f"positive_{topic}"] = summary_response.content
+            time.sleep(2)  # Avoid rate limits
+    
+    # Process negative topics
+    for topic in top_5_negative:
+        negative_reviews_with_topic = [
+            r for r in final_analysis_list
+            if topic in r.get('topics', []) and r.get('sentiment') == "Negative"
+        ]
+        # Take the last 10 reviews for recency
+        snippets = [r['review_text'] for r in negative_reviews_with_topic[-10:]]
+        if snippets:
+            summary_response = llm.invoke(
+                topic_summary_prompt_template.format(
+                    topic=topic,
+                    snippets="\\n".join(snippets))
+            )
+            topic_summaries[f"negative_{topic}"] = summary_response.content
+            time.sleep(2)  # Avoid rate limits
+    
+    return {"topic_summaries": topic_summaries}
+
 def generate_final_report_node(state: AgentState):
     """Generates the final summary using the rich context."""
     print("---NODE: GENERATE FINAL REPORT---")
@@ -435,12 +442,14 @@ def generate_final_report_node(state: AgentState):
 workflow = StateGraph(AgentState)
 workflow.add_node("retrieve_reviews", retrieve_reviews_node)
 workflow.add_node("analysis_and_enrichment", analysis_and_enrichment_node)
+workflow.add_node("topic_summary", topic_summary_node)
 workflow.add_node("generate_final_report", generate_final_report_node)
 
 workflow.set_entry_point("retrieve_reviews")
 workflow.add_edge("retrieve_reviews", "analysis_and_enrichment")
-workflow.add_edge("analysis_and_enrichment", "generate_final_report")
+workflow.add_edge("analysis_and_enrichment", "topic_summary")
+workflow.add_edge("topic_summary", "generate_final_report")
 workflow.add_edge("generate_final_report", END)
 
 agent_executor = workflow.compile()
-print("✅ Agent graph compiled with FINAL consolidated enrichment logic.")
+print("✅ Agent graph compiled successfully.")

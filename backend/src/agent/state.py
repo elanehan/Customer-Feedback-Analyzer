@@ -61,12 +61,14 @@ class AgentState(TypedDict):
 
     # Populated by the first node
     reviews: List[dict]
-
-    # Populated by `batch_analysis_node` with raw topics
     analysis_results: List[dict]
     
-    # Populated by `normalize_topics_node`
-    normalization_map: Dict[str, str]
+    # Populated by the worker after aggregating all chunks
+    top_5_positive_topics: List[str]
+    top_5_negative_topics: List[str]
+
+    # Populated by the topic_summary_node
+    topic_summaries: Dict[str, str]  # Maps topic to summary text
     
     # Populated by `enrich_and_summarize_topics_node`
     summary_context: dict

@@ -148,10 +148,9 @@ async def get_job_status(job_id: str):
 
             if results:
                 job_data = dict(results[0])
-                # The final status should be 'completed' or 'failed' based on the worker's logic
-                final_status = job_data.get('status', 'unknown')
+                final_status = job_data.get('status', 'running')
 
-                details = json.loads(job_data.get('full_analysis_json', '{}')) if job_data.get('full_analysis_json') else {}
+                details = json.loads(job_data.get('full_analysis_json', '[]')) if job_data.get('full_analysis_json') else []
 
                 return {"job_id": job_id, "status": final_status, "result": {"summary": job_data.get('summary'), "details": details}}
             else:
