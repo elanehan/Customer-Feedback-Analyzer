@@ -193,11 +193,13 @@ type ApiResponse = {
   result: {
     summary: string;
     details: {
-      rating: number;
-      sentiment: 'Positive' | 'Negative' | 'Neutral';
-      topics: string[];
-      review_timestamp: string;
-    }[];
+      positive_percent: number;
+      negative_percent: number;
+      neutral_percent: number;
+      product_id: string;
+      top_5_positive_topics: string[];
+      top_5_negative_topics: string[];
+    };
   };
 };
 
@@ -206,39 +208,24 @@ const processApiData = (apiResponse: ApiResponse) => {
     return null;
   }
   
-  const analysisList = apiResponse.result.details;
+  const stats = apiResponse.result.details;
 
-  // 1. Process Sentiment Data
-  const sentimentCounts = { Positive: 0, Negative: 0, Neutral: 0 };
-  analysisList.forEach(item => {
-    if (item.sentiment in sentimentCounts) {
-      sentimentCounts[item.sentiment]++;
-    }
-  });
-  const sentimentChartData = Object.entries(sentimentCounts).map(
-    ([name, value]) => ({
-      name: name as "Positive" | "Negative" | "Neutral",
-      value,
-    })
-  );
+  // Process Sentiment Data for the Pie Chart
+  const sentimentChartData = [
+    { name: 'Positive' as const, value: stats.positive_percent },
+    { name: 'Negative' as const, value: stats.negative_percent },
+    { name: 'Neutral' as const, value: stats.neutral_percent }
+  ]
 
-  // 2. Process Topic Data
-  const topicCounts: Record<string, number> = {};
-  analysisList.forEach(item => {
-    item.topics.forEach(topic => {
-      topicCounts[topic] = (topicCounts[topic] || 0) + 1;
-    });
-  });
-  const topicChartData = Object.entries(topicCounts)
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count) // Sort topics by frequency
-    .slice(0, 10); // Show top 10 topics
+  // Process Topic Data for the Bar Chart
+  const positiveTopics = stats.top_5_positive_topics.map((name, index) => ({ name, rank: 5 - index, type: 'positive' as const }));
+  const negativeTopics = stats.top_5_negative_topics.map((name, index) => ({ name, rank: 5 - index, type: 'negative' as const }));
+  const topicChartData = [...positiveTopics, ...negativeTopics];
 
   return {
     summary: apiResponse.result.summary,
     sentimentChartData,
     topicChartData,
-    totalReviews: analysisList.length
   };
 };
 
@@ -246,8 +233,7 @@ const processApiData = (apiResponse: ApiResponse) => {
 type Analysis = {
   summary: string;
   sentimentChartData: { name: "Positive" | "Negative" | "Neutral"; value: number }[];
-  topicChartData: { name: string; count: number }[];
-  totalReviews: number;
+  topicChartData: { name: string; rank: number; type: 'positive' | 'negative' }[];
 };
 
 function App() {
