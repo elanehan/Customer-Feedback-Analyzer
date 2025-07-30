@@ -9,8 +9,8 @@ from dotenv import load_dotenv
 print("Worker: Loading environment and configuration...")
 load_dotenv(dotenv_path='../../.env') 
 
-from .configuration import AgentConfig
-from .graph import retrieve_reviews_node, analysis_and_enrichment_node, topic_summary_node, generate_final_report_node
+from agent.configuration import AgentConfig
+from agent.graph import retrieve_reviews_node, analysis_and_enrichment_node, topic_summary_node, generate_final_report_node
 import time
 
 # Create an INSTANCE of the config and validate it. This is the fix.

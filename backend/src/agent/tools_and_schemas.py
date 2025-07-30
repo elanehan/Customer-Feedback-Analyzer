@@ -3,7 +3,7 @@ from typing import List, Literal
 from pydantic import BaseModel, Field
 from langchain_core.tools import tool
 from google.cloud import bigquery
-from .configuration import AgentConfig
+from agent.configuration import AgentConfig
 
 # class SearchQueryList(BaseModel):
 #     query: List[str] = Field(

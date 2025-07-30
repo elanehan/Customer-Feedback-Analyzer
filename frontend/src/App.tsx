@@ -185,7 +185,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Input } from './components/ui/input';
 import { Button } from './components/ui/button';
-import mockData from './mock-data.json'; // Import our static mock data
+//import mockData from './mock-data.json'; // Import our static mock data
 import { SentimentPieChart } from './components/SentimentPieChart';
 import { TopicsBarChart } from './components/TopicsBarChart';
 
@@ -205,7 +205,13 @@ type ApiResponse = {
   };
 };
 
-const processApiData = (apiResponse: ApiResponse) => {
+type Analysis = {
+  summary: string;
+  sentimentChartData: { name: "Positive" | "Negative" | "Neutral"; value: number }[];
+  topicChartData: { name: string; rank: number; type: 'positive' | 'negative' }[];
+};
+
+const processApiData = (apiResponse: ApiResponse): Analysis | null => {
   if (!apiResponse || apiResponse.status !== 'completed') {
     return null;
   }
@@ -232,21 +238,13 @@ const processApiData = (apiResponse: ApiResponse) => {
 };
 
 
-type Analysis = {
-  summary: string;
-  sentimentChartData: { name: "Positive" | "Negative" | "Neutral"; value: number }[];
-  topicChartData: { name: string; rank: number; type: 'positive' | 'negative' }[];
-};
-
 function App() {
   // We use useState to hold the processed data
   const [productId, setProductId] = useState<string>(""); // For the input field
   const [jobId, setJobId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [analysis, setAnalysis] = useState<Analysis | null>(
-    processApiData(mockData as ApiResponse)
-  );
+  const [analysis, setAnalysis] = useState<Analysis | null>(null);
 
   const startAnalysis = useCallback(async () => {
     if (!productId) {
@@ -258,7 +256,6 @@ function App() {
     setAnalysis(null); // Clear previous results
 
     try {
-      // The vite.config.ts proxy will forward this to http://127.0.0.1:8000/analyze
       const response = await fetch("/api/analyze", { 
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -311,7 +308,7 @@ function App() {
 
     return () => clearInterval(intervalId); // Cleanup when component unmounts or jobId changes
   }, [jobId]);
-
+  
   return (
     <div className="bg-slate-100 min-h-screen p-8 font-sans">
       <div className="max-w-4xl mx-auto">
@@ -331,22 +328,26 @@ function App() {
               disabled={isLoading}
               className="flex-grow"
             />
-            <Button onClick={startAnalysis} disabled={isLoading} className="sm:w-auto w-full">
+            <Button onClick={startAnalysis} disabled={isLoading || !productId} className="sm:w-auto w-full">
               {isLoading ? "Analyzing..." : "Analyze Product"}
             </Button>
           </div>
           {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
         </div>
 
+        {isLoading && (
+          <div className="text-center text-slate-500 py-8">Loading analysis... This may take a few moments.</div>
+        )}
+
         {analysis ? (
-          <main className="space-y-8">
+          <main className="space-y-8 animate-fadeInUp">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:items-start">
               <div className="bg-white p-6 rounded-lg shadow">
                 <h2 className="text-xl font-semibold text-slate-700 mb-4">Sentiment Distribution</h2>
                 <SentimentPieChart data={analysis.sentimentChartData} />
               </div>
               <div className="bg-white p-6 rounded-lg shadow">
-                <h2 className="text-xl font-semibold text-slate-700 mb-4">Top 10 Topics</h2>
+                <h2 className="text-xl font-semibold text-slate-700 mb-4">Top 5 Positive & Negative Topics</h2>
                 <TopicsBarChart data={analysis.topicChartData} />
               </div>
             </div>
@@ -356,7 +357,7 @@ function App() {
             </div>
           </main>
         ) : (
-          <div className="text-center text-slate-500">Loading analysis...</div>
+          !isLoading && <div className="text-center text-slate-500">Enter a Product ID to begin analysis.</div>
         )}
       </div>
     </div>

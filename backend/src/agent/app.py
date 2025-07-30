@@ -62,7 +62,7 @@ import time
 print("API Server: Loading environment and configuration...")
 load_dotenv(dotenv_path='../../.env')
 
-from .configuration import AgentConfig
+from agent.configuration import AgentConfig
 
 try:
     config = AgentConfig(gcp_project_id=os.getenv("GCP_PROJECT_ID"))
