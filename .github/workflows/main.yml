@@ -46,7 +46,7 @@ jobs:
           --platform managed \
           --allow-unauthenticated \
           --set-env-vars="GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }},REDIS_URI=${{ secrets.REDIS_URI }},DATABASE_URI=${{ secrets.DATABASE_URI }},GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},LANGSMITH_API_KEY=${{ secrets.LANGSMITH_API_KEY }}" \
-          --vpc-connector YOUR_VPC_CONNECTOR_NAME # Replace with your VPC connector name
+          --vpc-connector feedback-analyzer-connect
 
     - name: Deploy Worker Service to Cloud Run
       run: |
@@ -57,6 +57,6 @@ jobs:
           --no-allow-unauthenticated \
           --min-instances 1 \
           --set-env-vars="GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }},REDIS_URI=${{ secrets.REDIS_URI }},DATABASE_URI=${{ secrets.DATABASE_URI }},GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},LANGSMITH_API_KEY=${{ secrets.LANGSMITH_API_KEY }}" \
-          --vpc-connector YOUR_VPC_CONNECTOR_NAME \
+          --vpc-connector feedback-analyzer-connect \
           --command="python" \
           --args="run_worker.py"
