@@ -205,4 +205,3 @@ backend/.langgraph_api
 data/
 
 gcp-credentials.json
-.github/workflows/main.yml
