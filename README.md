@@ -1,5 +1,7 @@
 # End-to-End MLOps: Customer Feedback Analysis Platform
 
+![Customer Feedback Analysis Platform](assets/demo.png)
+
 This project is a full-stack, cloud-native application designed to ingest, process, and analyze customer feedback at scale. It leverages a modern data engineering pipeline and a sophisticated AI agent to automatically derive business insights—such as sentiment trends and key topics—from raw, unstructured review data. The results are served through an interactive web dashboard.
 
 This platform demonstrates a complete, end-to-end MLOps workflow, from large-scale data processing with Apache Spark to automated CI/CD and deployment on a serverless cloud architecture.
