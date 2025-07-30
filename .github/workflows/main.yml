@@ -64,4 +64,4 @@ jobs:
           --vpc-connector feedback-analyzer-connect \
           --command="python" \
           --args="run_worker.py" \
-          --no-startup-probe
+          --startup-probe=none
