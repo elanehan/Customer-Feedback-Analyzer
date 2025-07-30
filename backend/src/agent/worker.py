@@ -57,7 +57,7 @@ def run_full_analysis(job_id: str, product_id: str):
         print(f"WORKER: Found {total_reviews} reviews for product {product_id}.")
 
         # MAP: process reviews in chunks
-        chunk_size = 50
+        chunk_size = 100
         all_enriched_results = []
 
         for i in range(0, total_reviews, chunk_size):
