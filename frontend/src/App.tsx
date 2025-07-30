@@ -182,7 +182,9 @@
 // }
 
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Input } from './components/ui/input';
+import { Button } from './components/ui/button';
 import mockData from './mock-data.json'; // Import our static mock data
 import { SentimentPieChart } from './components/SentimentPieChart';
 import { TopicsBarChart } from './components/TopicsBarChart';
@@ -238,38 +240,77 @@ type Analysis = {
 
 function App() {
   // We use useState to hold the processed data
-  const [analysis, setAnalysis] = useState<Analysis | null>(null);
+  const [productId, setProductId] = useState<string>(""); // For the input field
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [analysis, setAnalysis] = useState<Analysis | null>(
+    processApiData(mockData as ApiResponse)
+  );
+
+  const startAnalysis = useCallback(async () => {
+    if (!productId) {
+      setError("Please enter a Product ID.");
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+    setAnalysis(null); // Clear previous results
+
+    try {
+      // The vite.config.ts proxy will forward this to http://127.0.0.1:8000/analyze
+      const response = await fetch("/api/analyze", { 
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ product_id: productId }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to start analysis. Server responded with ${response.status}.`);
+      }
+
+      const data = await response.json();
+      setJobId(data.job_id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An unknown error occurred.");
+      setIsLoading(false);
+    }
+  }, [productId]);
 
   // This useEffect hook runs once when the component loads
   useEffect(() => {
-    try {
-      console.log("--- DEBUGGING useEffect ---");
-      
-      // 1. Check the raw imported data
-      console.log("1. Raw imported mockData:", mockData);
-      if (!mockData) {
-        throw new Error("mockData object is null or undefined. Check the file path and content.");
+    if (!jobId) return;
+
+    const intervalId = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/status/${jobId}`);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch job status. Server responded with ${response.status}.`);
+        }
+        const data = await response.json();
+
+        if (data.status === 'completed') {
+          clearInterval(intervalId);
+          const processedData = processApiData(data);
+          setAnalysis(processedData);
+          setIsLoading(false);
+          setJobId(null);
+        } else if (data.status === 'failed') {
+          clearInterval(intervalId);
+          setError("Analysis job failed. Please check the backend logs for details.");
+          setIsLoading(false);
+          setJobId(null);
+        }
+      } catch (err) {
+        clearInterval(intervalId);
+        setError(err instanceof Error ? err.message : "An unknown error occurred while polling.");
+        setIsLoading(false);
+        setJobId(null);
       }
+    }, 3000); // Poll every 3 seconds
 
-      // 2. Call the processing function
-      console.log("2. Calling processApiData with the mock data...");
-      const processedData = processApiData(mockData as ApiResponse);
-      
-      // 3. Check the result of the processing function
-      console.log("3. Data after processing:", processedData);
-      if (!processedData) {
-        throw new Error("processApiData function returned null. Check for a logic error inside it.");
-      }
-
-      // 4. Set the state
-      console.log("4. Calling setAnalysis with the processed data.");
-      setAnalysis(processedData);
-      console.log("5. State has been set. The dashboard should now render.");
-
-    } catch (error) {
-      console.error("❌ An error occurred inside the useEffect hook:", error);
-    }
-  }, []); // The empty dependency array means this runs only once on mount
+    return () => clearInterval(intervalId); // Cleanup when component unmounts or jobId changes
+  }, [jobId]);
 
   return (
     <div className="bg-slate-100 min-h-screen p-8 font-sans">
@@ -280,6 +321,22 @@ function App() {
         </header>
 
         {/* We'll add the input section here later */}
+        <div className="bg-white p-6 rounded-lg shadow mb-8">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <Input
+              type="text"
+              value={productId}
+              onChange={(e) => setProductId(e.target.value)}
+              placeholder="Enter Product ID (e.g., B007JFMH8M)"
+              disabled={isLoading}
+              className="flex-grow"
+            />
+            <Button onClick={startAnalysis} disabled={isLoading} className="sm:w-auto w-full">
+              {isLoading ? "Analyzing..." : "Analyze Product"}
+            </Button>
+          </div>
+          {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
+        </div>
 
         {analysis ? (
           <main className="space-y-8">
