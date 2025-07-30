@@ -1,50 +1,37 @@
 # # mypy: disable - error - code = "no-untyped-def,misc"
-# import pathlib
-# from fastapi import FastAPI, Response
-# from fastapi.staticfiles import StaticFiles
+import pathlib
+from fastapi import FastAPI, Response
+from fastapi.staticfiles import StaticFiles
 
-# # Define the FastAPI app
-# app = FastAPI()
+# Define the FastAPI app
+app = FastAPI()
 
+def create_frontend_router(build_dir="/deps/frontend/dist"):
+    """Creates a router to serve the React frontend."""
+    build_path = pathlib.Path(build_dir)
 
-# def create_frontend_router(build_dir="../frontend/dist"):
-#     """Creates a router to serve the React frontend.
+    # Check if the build directory and index.html exist
+    if not build_path.is_dir() or not (build_path / "index.html").is_file():
+        print(f"WARN: Frontend build directory not found at {build_path}. Serving will fail.")
+        # Return a dummy router if the build isn't ready
+        from starlette.routing import Route
+        async def dummy_frontend(request):
+            return Response(
+                "Frontend not built. This should not happen in the Docker container.",
+                media_type="text/plain",
+                status_code=503,
+            )
+        return Route("/{path:path}", endpoint=dummy_frontend)
 
-#     Args:
-#         build_dir: Path to the React build directory relative to this file.
-
-#     Returns:
-#         A Starlette application serving the frontend.
-#     """
-#     build_path = pathlib.Path(__file__).parent.parent.parent / build_dir
-
-#     if not build_path.is_dir() or not (build_path / "index.html").is_file():
-#         print(
-#             f"WARN: Frontend build directory not found or incomplete at {build_path}. Serving frontend will likely fail."
-#         )
-#         # Return a dummy router if build isn't ready
-#         from starlette.routing import Route
-
-#         async def dummy_frontend(request):
-#             return Response(
-#                 "Frontend not built. Run 'npm run build' in the frontend directory.",
-#                 media_type="text/plain",
-#                 status_code=503,
-#             )
-
-#         return Route("/{path:path}", endpoint=dummy_frontend)
-
-#     return StaticFiles(directory=build_path, html=True)
+    return StaticFiles(directory=build_path, html=True)
 
 
-# # Mount the frontend under /app to not conflict with the LangGraph API routes
-# app.mount(
-#     "/app",
-#     create_frontend_router(),
-#     name="frontend",
-# )
-
-# backend/src/agent/app.py
+# Mount the frontend under /app to match your vite.config.ts base path
+app.mount(
+    "/app",
+    create_frontend_router(),
+    name="frontend",
+)
 
 import os
 import json
@@ -56,9 +43,8 @@ from rq import Queue
 from rq.job import Job
 from google.cloud import bigquery
 from dotenv import load_dotenv
-import time
 
-# --- 1. Setup ---
+# Setup
 print("API Server: Loading environment and configuration...")
 load_dotenv(dotenv_path='../../.env')
 
@@ -70,15 +56,15 @@ try:
 except ValueError as e:
     raise RuntimeError(f"API Server Configuration Error: {e}")
 
-# --- 2. Initialize Clients ---
+# Initialize Clients
 print("API Server: Connecting to Redis and BigQuery...")
-redis_conn = Redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+redis_conn = Redis.from_url(os.getenv("REDIS_URI", "redis://localhost:6379/0"))
 q = Queue(name="default", connection=redis_conn)
 
 BQ_CLIENT = bigquery.Client(project=config.gcp_project_id)
 RESULTS_TABLE_ID = f"{config.gcp_project_id}.{config.bigquery_dataset}.analysis_results"
 
-# --- 3. Define API Models ---
+# Define API Models
 class AnalyzeRequest(BaseModel):
     product_id: str
 
@@ -86,9 +72,7 @@ class AnalyzeResponse(BaseModel):
     message: str
     job_id: str
 
-app = FastAPI()
-
-# --- 4. Define API Endpoints ---
+# Define API Endpoints 
 
 @app.post("/analyze", response_model=AnalyzeResponse, status_code=status.HTTP_202_ACCEPTED)
 async def start_analysis(request: AnalyzeRequest):

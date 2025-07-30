@@ -182,7 +182,7 @@
 // }
 
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Input } from './components/ui/input';
 import { Button } from './components/ui/button';
 //import mockData from './mock-data.json'; // Import our static mock data
@@ -237,6 +237,7 @@ const processApiData = (apiResponse: ApiResponse): Analysis | null => {
   };
 };
 
+const apiUrl = import.meta.env.VITE_API_BASE_URL || '';
 
 function App() {
   // We use useState to hold the processed data
@@ -256,7 +257,7 @@ function App() {
     setAnalysis(null); // Clear previous results
 
     try {
-      const response = await fetch("/api/analyze", { 
+      const response = await fetch(`${apiUrl}/analyze`, { 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ product_id: productId }),
@@ -280,7 +281,7 @@ function App() {
 
     const intervalId = setInterval(async () => {
       try {
-        const response = await fetch(`/api/status/${jobId}`);
+        const response = await fetch(`${apiUrl}/status/${jobId}`);
         if (!response.ok) {
           throw new Error(`Failed to fetch job status. Server responded with ${response.status}.`);
         }

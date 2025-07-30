@@ -203,3 +203,6 @@ backend/.langgraph_api
 
 # Dataset files
 data/
+
+gcp-credentials.json
+.github/workflows/main.yml

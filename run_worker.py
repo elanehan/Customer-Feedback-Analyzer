@@ -13,7 +13,7 @@ load_dotenv(dotenv_path='backend/.env')
 
 # --- Configuration ---
 listen = ['default']
-redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
+redis_url = os.getenv('REDIS_URI', 'redis://localhost:6379')
 conn = from_url(redis_url)
 
 if __name__ == '__main__':
