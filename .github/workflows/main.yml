@@ -48,7 +48,7 @@ jobs:
           --platform managed \
           --allow-unauthenticated \
           --set-env-vars="$ENV_VARS" \
-          --vpc-connector YOUR_VPC_CONNECTOR_NAME
+          --vpc-connector feedback-analyzer-connect
 
     - name: Deploy Worker Service to Cloud Run
       env:
@@ -61,6 +61,6 @@ jobs:
           --no-allow-unauthenticated \
           --min-instances 1 \
           --set-env-vars="$ENV_VARS" \
-          --vpc-connector YOUR_VPC_CONNECTOR_NAME \
+          --vpc-connector feedback-analyzer-connect \
           --command="python" \
           --args="run_worker.py"
