@@ -47,6 +47,8 @@ RUN cd /deps/backend && \
 ENV LANGGRAPH_HTTP='{"app": "/deps/backend/src/agent/app.py:app"}'
 ENV LANGSERVE_GRAPHS='{"agent": "/deps/backend/src/agent/graph.py:agent_executor"}'
 
+COPY run_worker.py /deps/backend/
+
 # -- Ensure user deps didn't inadvertently overwrite langgraph-api
 # Create all required directories that the langgraph-api package expects
 RUN mkdir -p /api/langgraph_api /api/langgraph_runtime /api/langgraph_license /api/langgraph_storage && \
