@@ -6,7 +6,7 @@ from rq.worker import SimpleWorker
 from dotenv import load_dotenv
 
 # Add the project's root directory to the Python path
-sys.path.insert(0, os.getcwd()) 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Load the .env file from the backend directory
 load_dotenv(dotenv_path='backend/.env')
