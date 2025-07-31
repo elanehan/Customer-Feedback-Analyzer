@@ -65,4 +65,5 @@ jobs:
           --vpc-connector feedback-analyzer-connect \
           --command="python" \
           --args="run_worker.py" \
-          --cpu-always-allocated
+          --port=8080 \
+          --no-cpu-throttling
