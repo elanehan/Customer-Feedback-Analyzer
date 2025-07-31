@@ -89,7 +89,7 @@ async def start_analysis(request: AnalyzeRequest):
     # Step 1: Create the Job object manually.
     # This gives us full control and avoids any argument name collisions.
     job = Job.create(
-        func='backend.src.agent.worker.run_full_analysis', # The function to run
+        func='src.agent.worker.run_full_analysis', 
         args=(job_id, product_id),                          # The arguments, as a tuple in the correct order
         connection=redis_conn,
         id=job_id,                                          # Explicitly set the Job's ID
