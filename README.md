@@ -14,85 +14,78 @@ This platform demonstrates a complete, end-to-end MLOps workflow, from large-sca
 
 ## Features
 
--   **Robust Data Pipeline:** Ingests raw data from a GCS Data Lake, processes it at scale with **Apache Spark**, and stores structured results in **BigQuery**.
+-   **Robust Data Pipeline:** Ingests raw data from GCS, processes it at scale with **Apache Spark on Dataproc**, and stores structured results in **Google BigQuery**.
 -   **Autonomous AI Agent:** Uses **LangGraph** and the **Gemini API** to perform a multi-step analysis chain:
     -   🔍 Fetches relevant data from the BigQuery warehouse.
-    -   😊 Performs sentiment analysis on each review.
-    -   🏷️ Extracts key topics and themes from the feedback.
+    -   😊 Performs sentiment analysis and topic extraction on all reviews in a single, efficient batch call.
+    -   📊 Aggregates results to identify key positive and negative themes.
     -   ✍️ Generates a concise, executive-level summary of the findings.
--   **Interactive Dashboard:** A **React** frontend with data visualizations (e.g., charts from Recharts) to clearly present the sentiment breakdown and topic frequency.
--   **Automated MLOps:** A complete **CI/CD pipeline** using **GitHub Actions** for automated testing, Docker containerization, and deployment.
--   **Scalable Cloud-Native Deployment:** The entire application is containerized with **Docker** and deployed on **Google Cloud Run**, a serverless platform for scalable, cost-efficient hosting.
+-   **Interactive Dashboard:** A **React** frontend with data visualizations using **Recharts** to clearly present the sentiment breakdown and topic frequency.
+-   **Automated MLOps:** A complete **CI/CD pipeline** using **GitHub Actions** for automated building, containerization, and deployment.
+-   **Scalable Cloud-Native Deployment:** The entire application is containerized with **Docker** and deployed on **Google Cloud Run**, with the API running as a scalable service and the background worker running as a dedicated job.
 
-## Project Structure
+## Getting Started Locally (Docker Compose)
 
-The project is divided into several key directories:
+### Prerequisites
+- Docker and Docker Compose
+- Google Cloud SDK (`gcloud`) authenticated locally (`gcloud auth application-default login`)
+- A GCP project with the BigQuery API enabled.
+- A service account key file (`gcp-credentials.json`) in the project root with **BigQuery User** permissions.
 
--   `frontend/`: Contains the React application for the user dashboard.
--   `backend/`: Contains the FastAPI application and the LangGraph agent logic.
--   `scripts/`: Contains utility and data processing scripts, including the PySpark job.
--   `data/`: Local directory for raw data files (ignored by Git).
--   `.github/workflows/`: Contains the CI/CD pipeline definitions for GitHub Actions.
+### Step 1: Set Up Environment File
+In the `backend/` directory, create a `.env` file from the example and add your secrets:
+```env
+GEMINI_API_KEY="your-gemini-key"
+LANGSMITH_API_KEY="your-langsmith-key"
+GCP_PROJECT_ID="your-gcp-project-id"
 
-## Getting Started
+# For local worker to connect to the Redis container
+REDIS_URI="redis://localhost:6379"
+```
 
-This project consists of two main parts: the one-time data pipeline setup and the running web application.
+### Step 2: Run the Application
+From the project root, run the Docker Compose command:
+```bash
+docker-compose up --build
+```
+In a **separate terminal**, start the local worker to process jobs:
+```bash
+python run_worker.py
+```
+The application will be available at **`http://localhost:8123/app/`**.
 
-### Phase 1: Data Pipeline Setup (One-Time)
-
-Before running the web application, you must process the raw data and populate your BigQuery warehouse.
-
-1.  **Set Up GCP:** Ensure you have a Google Cloud project with the **GCS**, **BigQuery**, and **Dataproc** APIs enabled. Authenticate your local environment with `gcloud auth application-default login`.
-2.  **Ingest Raw Data:** Place your raw `Reviews.csv` file in the `data/` directory. Run the ingestion script to upload it to your GCS Data Lake bucket.
-    ```bash
-    python scripts/ingest_to_gcs.py --project=<your-project> --bucket=<your-bucket> --source=data/Reviews.csv
-    ```
-3.  **Process Data with Spark:** Run the serverless Spark job to process the data from GCS and load the clean results into BigQuery.
-    ```bash
-    gcloud dataproc batches submit pyspark gs://<your-bucket>/scripts/process_with_spark.py --project=<your-project> --region=<your-region> --version=2.2 --jars=gs://spark-lib/bigquery/spark-3.5-bigquery-0.37.0.jar -- --input_path=gs://<your-bucket>/raw_data/amazon_reviews.csv --output_table=<project>.<dataset>.clean_reviews --gcs_temp_bucket=<your-bucket>
-    ```
-
-### Phase 2: Running the Web Application Locally
-
-Once your data is in BigQuery, you can run the application.
-
-1.  **Prerequisites:**
-    -   Node.js and npm
-    -   Python 3.9+
-    -   Docker
-    -   Set your **Gemini API Key** in a `.env` file in the `backend/` directory.
-
-2.  **Install Dependencies:**
-    -   **Backend:** `cd backend && pip install -e .`
-    -   **Frontend:** `cd frontend && npm install`
-
-3.  **Run Development Servers:**
-    - From the project root, run:
-        ```bash
-        docker-compose up --build
-        ```
-    - Open your browser and navigate to `http://localhost:5173`.
-
-## Deployment
+## Deployment to Google Cloud
 
 This application is designed for automated deployment to **Google Cloud Run** via a CI/CD pipeline defined in **GitHub Actions**.
 
-1.  **On `git push`:** The workflow in `.github/workflows/` is triggered.
-2.  **Test & Build:** The pipeline runs backend tests, then builds and tags new Docker images for the frontend and backend.
-3.  **Push to Registry:** The new images are pushed to a container registry (e.g., Google Artifact Registry).
-4.  **Deploy:** The pipeline then issues a `gcloud run deploy` command to update the Google Cloud Run service with the new container image, resulting in a zero-downtime deployment.
+### One-Time Infrastructure Setup
+1.  **Enable APIs**: In your GCP project, enable the **Artifact Registry**, **Cloud Run Admin**, **Cloud SQL**, and **Serverless VPC Access** APIs.
+2.  **Create Cloud SQL (Postgres)**: Provision a PostgreSQL instance and set a password for the `postgres` user.
+3.  **Create Redis on GCE**: Provision a small GCE VM (e.g., `e2-micro`), install Docker, and run the `redis:6` container.
+4.  **Create VPC Connector**: Create a Serverless VPC Access connector in the same region as your other services.
+5.  **Create Firewall Rule**: Create a firewall rule to allow **ingress** traffic from the VPC Connector's IP range to your Redis VM on TCP ports `6379` and `5432`.
+6.  **Create Artifact Registry Repo**: Create a **Docker** repository to store your container images.
+
+### CI/CD Pipeline Setup
+1.  **Create a GCP Service Account**: Create a service account with the following roles: `Artifact Registry Writer`, `Cloud Run Admin`, `Serverless VPC Access User`, `Compute Network User`. Download its JSON key.
+2.  **Add GitHub Secrets**: In your repository settings, add the following secrets:
+    - `GCP_PROJECT_ID`: Your Google Cloud Project ID.
+    - `GCP_SA_KEY`: The content of the service account JSON key.
+    - `GEMINI_API_KEY`: Your Gemini API key.
+    - `LANGSMITH_API_KEY`: Your LangSmith API key.
+    - `REDIS_URI`: The connection string for your Redis VM (e.g., `redis://PRIVATE_IP:6379`).
+    - `DATABASE_URI`: The connection string for your Cloud SQL instance.
+3.  **Update Workflow**: In `.github/workflows/main.yml`, replace the placeholder values (like `YOUR_VPC_CONNECTOR_NAME`) with your actual resource names.
+
+Once configured, any push to the `main` branch will automatically build and deploy the application to Google Cloud Run.
 
 ## Technologies Used
 
 -   **Frontend:** React, Vite, Tailwind CSS, Recharts
--   **Backend:** Python, FastAPI, LangGraph
--   **AI/ML:** Google Gemini, Scikit-learn, Pandas
--   **Data Pipeline:** Apache Spark, Google Cloud Storage (Data Lake), Google BigQuery (Data Warehouse)
--   **MLOps & Deployment:** Docker, GitHub Actions (CI/CD), Google Cloud Run, Google Dataproc
-
-## Acknowledgements
-
-This project was developed by building upon and significantly modifying the official `gemini-fullstack-langgraph-quickstart`, which is provided by Google and the LangChain team under the Apache 2.0 License.
+-   **Backend:** Python, FastAPI, LangGraph, RQ
+-   **AI/ML:** Google Gemini
+-   **Data Storage:** Google BigQuery, PostgreSQL, Redis
+-   **MLOps & Deployment:** Docker, GitHub Actions (CI/CD), Google Cloud Run, Artifact Registry, Google Compute Engine
 
 ## License
 
