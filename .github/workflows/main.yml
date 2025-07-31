@@ -62,7 +62,6 @@ jobs:
           --platform managed \
           --no-allow-unauthenticated \
           --min-instances 1 \
-          --set-env-vars="$ENV_VARS" \
           --vpc-connector feedback-analyzer-connect \
           --command="python" \
           --args="run_worker.py" \
