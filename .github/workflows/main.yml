@@ -39,8 +39,6 @@ jobs:
         docker push ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPO_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}-${{ github.run_attempt }}
 
     - name: Deploy API Service to Cloud Run
-      env:
-        ENV_VARS: "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }},REDIS_URI=${{ secrets.REDIS_URI }},DATABASE_URI=${{ secrets.DATABASE_URI }},GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},LANGSMITH_API_KEY=${{ secrets.LANGSMITH_API_KEY }}"
       run: |
         gcloud run deploy ${{ env.SERVICE_NAME }} \
           --image ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPO_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}-${{ github.run_attempt }} \
@@ -50,16 +48,10 @@ jobs:
           --set-env-vars="$ENV_VARS" \
           --vpc-connector feedback-analyzer-connect
 
-    - name: Deploy Worker Job to Cloud Run
-      env:
-        ENV_VARS: "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }},REDIS_URI=${{ secrets.REDIS_URI }},DATABASE_URI=${{ secrets.DATABASE_URI }},GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }},LANGSMITH_API_KEY=${{ secrets.LANGSMITH_API_KEY }}"
+    - name: Deploy Worker Job to Cloud Run  
       run: |
-        gcloud components install beta --quiet
-        gcloud beta run jobs update ${{ env.WORKER_NAME }} \
+        gcloud run jobs update ${{ env.WORKER_NAME }} \
           --image ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPO_NAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}-${{ github.run_attempt }} \
-          --region ${{ env.GCP_REGION }} \
-          --set-env-vars="$ENV_VARS" \
-          --vpc-connector feedback-analyzer-connect \
           --command="python" \
           --args="run_worker.py" \
           --tasks=1 \
